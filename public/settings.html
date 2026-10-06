@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Settings — Vidya Setu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/api.js"></script>
+<script src="js/layout.js"></script>
+<script>
+  const content = renderShell({ activeKey: "settings", eyebrow: "Configuration", title: "School Settings" });
+  content.innerHTML = `
+    <div class="card card-pad" style="max-width:560px;">
+      <div class="section-head"><div><h2 style="font-size:16px;">School Profile</h2><div class="sub">Shown on report cards</div></div></div>
+      <div class="alert alert-success" id="settings-success">Saved successfully.</div>
+      <form id="school-form">
+        <div class="field"><label>School Name</label><input type="text" name="name" required /></div>
+        <div class="field"><label>Address</label><input type="text" name="address" required /></div>
+        <div class="field-row">
+          <div class="field"><label>Phone</label><input type="text" name="phone" /></div>
+          <div class="field"><label>Email</label><input type="email" name="email" /></div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </form>
+    </div>
+
+    <div class="card card-pad" style="max-width:560px;margin-top:18px;" id="sessions">
+      <div class="section-head">
+        <div><h2 style="font-size:16px;">Academic Sessions</h2><div class="sub">Start a new session when a new year begins — old years stay fully intact</div></div>
+      </div>
+      <div id="sessions-list"><div class="center-loader" style="padding:20px;"><div class="loader"></div></div></div>
+      <div class="field-section-title">Start a New Session</div>
+      <form id="new-session-form">
+        <div class="field-row">
+          <div class="field"><label>Session Label</label><input type="text" name="label" placeholder="e.g. 2027-2028" required /></div>
+          <div class="field"><label>Start Date</label><input type="date" name="startDate" /></div>
+        </div>
+        <button type="submit" class="btn btn-brass btn-sm">+ Start New Session & Make Active</button>
+      </form>
+      <p style="font-size:12px;color:var(--slate);margin-top:10px;line-height:1.6;">
+        Starting a new session does not delete or touch any previous year's data — use the session switcher (top bar) any time to look back at a past session's students, marks, attendance and reports.
+      </p>
+    </div>
+
+    <div class="card card-pad" style="max-width:560px;margin-top:18px;">
+      <div class="section-head"><div><h2 style="font-size:16px;">WhatsApp Integration</h2><div class="sub">Connect this school's own WhatsApp Business number</div></div></div>
+      <div class="alert alert-success" id="wa-success">Saved successfully.</div>
+      <p id="wa-status" style="font-size:12.5px;color:var(--slate);margin-bottom:14px;"></p>
+      <form id="whatsapp-form">
+        <div class="field">
+          <label>Permanent Access Token</label>
+          <input type="password" name="whatsappToken" placeholder="Paste token from Meta App dashboard" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>Phone Number ID</label>
+          <input type="text" name="whatsappPhoneNumberId" placeholder="e.g. 109876543210123" />
+        </div>
+        <div class="field">
+          <label>Webhook Verify Token</label>
+          <input type="text" name="whatsappVerifyToken" placeholder="Any string you choose" />
+        </div>
+        <div class="field hint">
+          Set your Meta App's webhook callback URL to <span class="mono">&lt;your-domain&gt;/api/webhook/whatsapp</span> with this same verify token. Until these are filled in, reports send in simulate mode (visible in the app, not actually delivered).
+        </div>
+        <button type="submit" class="btn btn-primary">Save WhatsApp Settings</button>
+      </form>
+    </div>
+
+    <div class="card card-pad" style="max-width:560px;margin-top:18px;">
+      <h2 style="font-size:16px;">About Registration Numbers</h2>
+      <p style="font-size:13.5px;color:var(--slate);line-height:1.6;margin-top:8px;">
+        Registration numbers are generated automatically when a student is added — formatted as
+        <span class="mono" style="background:var(--navy-100);padding:2px 6px;border-radius:5px;">Class × 100 + running count</span>,
+        counted fresh within the session a student is admitted in. For example, the first student added to Class 12
+        in a session becomes <b>1201</b>, the next <b>1202</b>, and so on.
+      </p>
+    </div>
+  `;
+
+  async function loadSchool() {
+    const { school } = await apiFetch("/meta/school?" + withSession().toString());
+    const form = document.getElementById("school-form");
+    form.name.value = school.name || "";
+    form.address.value = school.address || "";
+    form.phone.value = school.phone || "";
+    form.email.value = school.email || "";
+
+    document.getElementById("wa-status").innerHTML = school.whatsappConfigured
+      ? `<span style="color:var(--leaf);font-weight:700;">● Connected</span> — reports are sent live on WhatsApp.`
+      : `<span style="color:var(--brass-dark);font-weight:700;">● Simulate mode</span> — fill in the fields below to send real WhatsApp messages.`;
+    const waForm = document.getElementById("whatsapp-form");
+    waForm.whatsappPhoneNumberId.value = school.whatsappPhoneNumberId || "";
+    waForm.whatsappVerifyToken.value = school.whatsappVerifyToken || "";
+  }
+
+  async function loadSessions() {
+    const region = document.getElementById("sessions-list");
+    try {
+      const data = await apiFetch("/sessions");
+      region.innerHTML = data.sessions
+        .map(
+          (s) => `
+        <div class="session-row">
+          <div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--navy-900);">${s.label}</div>
+            <div style="font-size:11.5px;color:var(--slate);">${s.id === data.activeSessionId ? "Current session" : "Past session"}</div>
+          </div>
+          ${s.id === data.activeSessionId
+            ? `<span class="tag-pill" style="background:var(--leaf-light);color:var(--leaf);">Active</span>`
+            : `<button class="btn btn-outline btn-sm" onclick="activateSession('${s.id}')">Make Active</button>`}
+        </div>`
+        )
+        .join("");
+    } catch (err) {
+      region.innerHTML = `<p style="font-size:12.5px;color:var(--rose);">${err.message}</p>`;
+    }
+  }
+
+  async function activateSession(id) {
+    try {
+      await apiFetch(`/sessions/${id}/activate`, { method: "PUT" });
+      setViewingSessionId(""); // go back to following the (now new) active session
+      toast("Active session updated.", "success");
+      loadSessions();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
+  document.getElementById("school-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    try {
+      await apiFetch("/meta/school", { method: "PUT", body: JSON.stringify(payload) });
+      const successEl = document.getElementById("settings-success");
+      successEl.classList.add("show");
+      setTimeout(() => successEl.classList.remove("show"), 2500);
+      toast("School profile updated.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  document.getElementById("new-session-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    try {
+      await apiFetch("/sessions", { method: "POST", body: JSON.stringify(payload) });
+      e.target.reset();
+      setViewingSessionId("");
+      toast("New session started and made active.", "success");
+      loadSessions();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  document.getElementById("whatsapp-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    if (!payload.whatsappToken) delete payload.whatsappToken; // don't overwrite a saved token with blank unless intentionally cleared
+    try {
+      await apiFetch("/meta/school", { method: "PUT", body: JSON.stringify(payload) });
+      const successEl = document.getElementById("wa-success");
+      successEl.classList.add("show");
+      setTimeout(() => successEl.classList.remove("show"), 2500);
+      toast("WhatsApp settings saved.", "success");
+      loadSchool();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  loadSchool();
+  loadSessions();
+</script>
+</body>
+</html>

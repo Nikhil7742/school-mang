@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Students — Vidya Setu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/api.js"></script>
+<script src="js/layout.js"></script>
+<script>
+  const content = renderShell({ activeKey: "students", eyebrow: "Records", title: "Students" });
+  content.innerHTML = `
+    <div class="toolbar">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="search-input" placeholder="Search by name, roll no, registration no, or father's name..." />
+      </div>
+      <select id="filter-class"><option value="">All Classes</option></select>
+      <select id="filter-section">
+        <option value="">All Sections</option>
+        <option value="A">Section A</option>
+        <option value="B">Section B</option>
+        <option value="C">Section C</option>
+      </select>
+      <button class="btn btn-outline" id="export-excel-btn">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 3 3 3-3M12 18v-6"/></svg>
+        Export Excel
+      </button>
+      <button class="btn btn-primary" id="add-student-btn">+ Add New Student</button>
+    </div>
+    <div id="table-region"><div class="center-loader"><div class="loader"></div></div></div>
+  `;
+</script>
+
+<!-- ============ Add / Edit Student Modal ============ -->
+<div class="modal-overlay" id="student-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">Add New Student</h3>
+      <button class="modal-close" onclick="closeStudentModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-error" id="form-error"></div>
+      <form id="student-form">
+        <input type="hidden" name="id" />
+
+        <div class="field-section-title">Photo</div>
+        <div class="photo-upload-row">
+          <div class="photo-preview" id="photo-preview">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="26" height="26"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+          </div>
+          <div>
+            <input type="file" id="photo-input" accept="image/*" style="display:none;" />
+            <button type="button" class="btn btn-outline btn-sm" id="choose-photo-btn">Choose Photo</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="remove-photo-btn" style="display:none;">Remove</button>
+            <div class="field hint" style="margin-top:6px;">JPG/PNG, will be resized automatically.</div>
+          </div>
+        </div>
+
+        <div class="field-section-title">Class & Roll Details</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Class *</label>
+            <select name="class" id="class-select" required>
+              <option value="">Select class</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Section</label>
+            <select name="section">
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="stream-field" style="display:none;">
+          <label>Stream *</label>
+          <select name="stream" id="stream-select">
+            <option value="Science">Science</option>
+            <option value="Commerce">Commerce</option>
+            <option value="Arts">Arts</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Roll Number *</label>
+            <input type="text" name="rollNo" required placeholder="e.g. 14" />
+          </div>
+          <div class="field">
+            <label>Registration No.</label>
+            <input type="text" id="regNoDisplay" disabled placeholder="Auto-generated on save" />
+          </div>
+        </div>
+
+        <div class="field-section-title">Student Details</div>
+        <div class="field">
+          <label>Full Name *</label>
+          <input type="text" name="name" required placeholder="e.g. Ananya Sharma" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Date of Birth *</label>
+            <input type="date" name="dob" required />
+          </div>
+          <div class="field">
+            <label>Gender</label>
+            <select name="gender">
+              <option value="">Select</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Admission Date</label>
+          <input type="date" name="admissionDate" />
+        </div>
+
+        <div class="field-section-title">Parent / Guardian Details</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Father's Name *</label>
+            <input type="text" name="fatherName" required />
+          </div>
+          <div class="field">
+            <label>Mother's Name</label>
+            <input type="text" name="motherName" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Contact Number (WhatsApp) *</label>
+            <input type="tel" name="contact" required placeholder="10-digit mobile number" />
+            <div class="hint">Reports are sent on WhatsApp to this number.</div>
+          </div>
+          <div class="field">
+            <label>Alternate Contact</label>
+            <input type="tel" name="altContact" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" name="email" />
+          </div>
+          <div class="field">
+            <label>Address</label>
+            <input type="text" name="address" placeholder="House, street, city" />
+          </div>
+        </div>
+
+        <div class="field-section-title">Fees</div>
+        <div class="field-row">
+          <div class="field">
+            <label>Total Fee (Rs.)</label>
+            <input type="number" min="0" name="totalFee" placeholder="e.g. 24000" />
+          </div>
+          <div class="field">
+            <label>Fee Paid (Rs.)</label>
+            <input type="number" min="0" name="paidFee" placeholder="e.g. 16000" />
+          </div>
+        </div>
+        <div class="field hint" style="margin-top:-8px;">Attendance is no longer entered here — mark it from the <a href="attendance.html">Attendance</a> page and it will show automatically.</div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeStudentModal()">Cancel</button>
+      <button class="btn btn-primary" id="save-student-btn" onclick="submitStudentForm()">Save Student</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Profile View Modal ============ -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3>Student Profile</h3>
+      <button class="modal-close" onclick="document.getElementById('profile-modal').classList.remove('show')">✕</button>
+    </div>
+    <div class="modal-body" id="profile-body"></div>
+  </div>
+</div>
+
+<!-- ============ Send Report (WhatsApp) Modal ============ -->
+<div class="modal-overlay" id="report-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3>Send Report to Parent</h3>
+      <button class="modal-close" onclick="closeReportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+        <div class="avatar" id="rm-avatar" style="width:44px;height:44px;border-radius:50%;background:var(--navy-100);color:var(--navy-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;"></div>
+        <div>
+          <div style="font-weight:700;font-size:14.5px;color:var(--navy-900);" id="rm-name"></div>
+          <div style="font-size:12px;color:var(--slate);" id="rm-meta"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Which exam(s) to feature as the highlighted total</label>
+        <div class="exam-multiselect" id="rm-exam-select"></div>
+        <div class="hint">Select one or more — e.g. Unit Test 1 + 2 + 3 combined.</div>
+      </div>
+
+      <div class="field">
+        <label>Message for Parent (optional — shown in the report)</label>
+        <textarea id="rm-description" rows="3" placeholder="e.g. Please ensure regular attendance and support at home for upcoming exams."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Report Preview</label>
+        <div class="report-preview" id="rm-preview">Full report (attendance, fees, marks) will be composed and sent as shown here.</div>
+      </div>
+
+      <div class="report-send-status" id="rm-status" style="display:none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeReportModal()">Cancel</button>
+      <button class="btn btn-whatsapp" id="rm-send-btn" onclick="sendReportNow()">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20.5 3.5A11 11 0 0 0 3.6 17L2 22l5.2-1.6A11 11 0 1 0 20.5 3.5Zm-8.5 17a9 9 0 0 1-4.6-1.3l-.3-.2-3 .9.9-2.9-.2-.3A9 9 0 1 1 12 20.5Zm5-6.7c-.3-.1-1.6-.8-1.9-.9-.2-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.2.2-.3.2-.5.1a7.3 7.3 0 0 1-2.2-1.3 8 8 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5c.1-.2.2-.3.2-.5.1-.2 0-.4 0-.5-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.5h-.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.3s1 2.7 1.2 2.9c.1.2 2 3.1 4.9 4.3.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.5-.1 1.6-.7 1.9-1.3.2-.6.2-1.1.2-1.3-.1-.1-.3-.2-.6-.3Z"/></svg>
+        Send Report on WhatsApp
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let ALL_CLASSES = [];
+  let CURRENT_STUDENTS = [];
+  let EDITING_ID = null;
+  let PENDING_PHOTO = undefined; // undefined = unchanged, null = removed, string = new data-URL
+  let EXAM_TYPES = [];
+
+  async function init() {
+    const meta = await apiFetch("/meta/classes");
+    ALL_CLASSES = meta.classes;
+    const classSel = document.getElementById("filter-class");
+    const formClassSel = document.getElementById("class-select");
+    meta.classes.forEach((c) => {
+      classSel.insertAdjacentHTML("beforeend", `<option value="${c}">Class ${c}</option>`);
+      formClassSel.insertAdjacentHTML("beforeend", `<option value="${c}">Class ${c}</option>`);
+    });
+
+    const examMeta = await apiFetch("/meta/exam-types");
+    EXAM_TYPES = examMeta.examTypes;
+
+    document.getElementById("class-select").addEventListener("change", (e) => {
+      const needsStream = meta.classesNeedingStream.includes(e.target.value);
+      document.getElementById("stream-field").style.display = needsStream ? "block" : "none";
+    });
+
+    document.getElementById("add-student-btn").addEventListener("click", () => openStudentModal());
+    document.getElementById("filter-class").addEventListener("change", loadStudents);
+    document.getElementById("filter-section").addEventListener("change", loadStudents);
+    document.getElementById("search-input").addEventListener("input", debounce(loadStudents, 350));
+    document.getElementById("export-excel-btn").addEventListener("click", exportExcel);
+
+    document.getElementById("choose-photo-btn").addEventListener("click", () => document.getElementById("photo-input").click());
+    document.getElementById("remove-photo-btn").addEventListener("click", () => {
+      PENDING_PHOTO = null;
+      setPhotoPreview(null);
+    });
+    document.getElementById("photo-input").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await compressImageFile(file);
+        PENDING_PHOTO = dataUrl;
+        setPhotoPreview(dataUrl);
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+
+    loadStudents();
+
+    if (new URLSearchParams(window.location.search).get("new") === "1") {
+      openStudentModal();
+    }
+  }
+
+  function setPhotoPreview(dataUrl) {
+    const preview = document.getElementById("photo-preview");
+    const removeBtn = document.getElementById("remove-photo-btn");
+    if (dataUrl) {
+      preview.style.backgroundImage = `url('${dataUrl}')`;
+      preview.classList.add("has-photo");
+      preview.innerHTML = "";
+      removeBtn.style.display = "inline-flex";
+    } else {
+      preview.style.backgroundImage = "";
+      preview.classList.remove("has-photo");
+      preview.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="26" height="26"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>`;
+      removeBtn.style.display = "none";
+    }
+  }
+
+  async function loadStudents() {
+    const region = document.getElementById("table-region");
+    const cls = document.getElementById("filter-class").value;
+    const section = document.getElementById("filter-section").value;
+    const search = document.getElementById("search-input").value;
+
+    const params = withSession();
+    if (cls) params.set("class", cls);
+    if (section) params.set("section", section);
+    if (search) params.set("search", search);
+
+    try {
+      const data = await apiFetch("/students?" + params.toString());
+      CURRENT_STUDENTS = data.students;
+      renderTable(data.students);
+    } catch (err) {
+      region.innerHTML = `<div class="empty-state"><h3>Could not load students</h3><p>${err.message}</p></div>`;
+    }
+  }
+
+  async function exportExcel() {
+    const cls = document.getElementById("filter-class").value;
+    const section = document.getElementById("filter-section").value;
+    const search = document.getElementById("search-input").value;
+    const params = withSession();
+    if (cls) params.set("class", cls);
+    if (section) params.set("section", section);
+    if (search) params.set("search", search);
+
+    const btn = document.getElementById("export-excel-btn");
+    btn.disabled = true;
+    try {
+      await apiDownload("/students/export?" + params.toString(), "students.xlsx");
+      toast("Excel file downloaded.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function avatarHtml(s, size) {
+    if (s.photoUrl) {
+      return `<div class="av" style="width:${size}px;height:${size}px;background-image:url('${s.photoUrl}');background-size:cover;background-position:center;"></div>`;
+    }
+    return `<div class="av" style="width:${size}px;height:${size}px;">${initials(s.name)}</div>`;
+  }
+
+  function renderTable(students) {
+    const region = document.getElementById("table-region");
+    if (!students.length) {
+      region.innerHTML = `
+        <div class="card">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+            <h3>No students found</h3>
+            <p>Try adjusting your filters, or add a new student to get started.</p>
+            <button class="btn btn-primary" onclick="openStudentModal()">+ Add New Student</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const rows = students
+      .map(
+        (s) => `
+        <tr>
+          <td><span class="reg-pill">${s.regNo}</span></td>
+          <td>
+            <div class="name-cell">
+              ${avatarHtml(s, 30)}
+              <div>
+                <div class="nm">${s.name}</div>
+                <div class="cls">Roll ${s.rollNo}</div>
+              </div>
+            </div>
+          </td>
+          <td>${s.class}-${s.section}${s.stream ? ` <span style="color:var(--slate);font-size:11.5px;">(${s.stream})</span>` : ""}</td>
+          <td>${s.fatherName}</td>
+          <td>${s.contact || "-"}</td>
+          <td>${formatDate(s.dob)}</td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn whatsapp-btn" title="Send Report" onclick="openReportModal('${s.id}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20.5 3.5A11 11 0 0 0 3.6 17L2 22l5.2-1.6A11 11 0 1 0 20.5 3.5Zm-8.5 17a9 9 0 0 1-4.6-1.3l-.3-.2-3 .9.9-2.9-.2-.3A9 9 0 1 1 12 20.5Zm5-6.7c-.3-.1-1.6-.8-1.9-.9-.2-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.2.2-.3.2-.5.1a7.3 7.3 0 0 1-2.2-1.3 8 8 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5c.1-.2.2-.3.2-.5.1-.2 0-.4 0-.5-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.5h-.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.3s1 2.7 1.2 2.9c.1.2 2 3.1 4.9 4.3.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.5-.1 1.6-.7 1.9-1.3.2-.6.2-1.1.2-1.3-.1-.1-.3-.2-.6-.3Z"/></svg></button>
+              <button class="icon-btn" title="View" onclick="viewProfile('${s.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button class="icon-btn" title="Edit" onclick="editStudent('${s.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+              <button class="icon-btn danger" title="Delete" onclick="deleteStudent('${s.id}','${s.name.replace(/'/g, "")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg></button>
+            </div>
+          </td>
+        </tr>`
+      )
+      .join("");
+
+    region.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Reg No.</th><th>Student</th><th>Class</th><th>Father's Name</th><th>Contact</th><th>DOB</th><th>Actions</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p style="font-size:12.5px;color:var(--slate);margin-top:12px;">${students.length} student${students.length !== 1 ? "s" : ""} found</p>
+    `;
+  }
+
+  function openStudentModal(student = null) {
+    EDITING_ID = student ? student.id : null;
+    PENDING_PHOTO = undefined;
+    document.getElementById("modal-title").textContent = student ? "Edit Student" : "Add New Student";
+    document.getElementById("form-error").classList.remove("show");
+    const form = document.getElementById("student-form");
+    form.reset();
+    document.getElementById("regNoDisplay").value = student ? student.regNo : "";
+    document.getElementById("stream-field").style.display = "none";
+    setPhotoPreview(student ? student.photoUrl : null);
+
+    if (student) {
+      form.class.value = student.class;
+      form.class.dispatchEvent(new Event("change"));
+      form.section.value = student.section;
+      if (student.stream) form.stream.value = student.stream;
+      form.rollNo.value = student.rollNo;
+      form.name.value = student.name;
+      form.dob.value = student.dob;
+      form.gender.value = student.gender || "";
+      form.admissionDate.value = student.admissionDate || "";
+      form.fatherName.value = student.fatherName;
+      form.motherName.value = student.motherName || "";
+      form.contact.value = student.contact || "";
+      form.altContact.value = student.altContact || "";
+      form.email.value = student.email || "";
+      form.address.value = student.address || "";
+      form.totalFee.value = student.fees ? student.fees.totalFee : "";
+      form.paidFee.value = student.fees ? student.fees.paidFee : "";
+      form.class.disabled = true; // class change not allowed once created (keeps reg no scheme sane)
+    } else {
+      form.class.disabled = false;
+    }
+
+    document.getElementById("student-modal").classList.add("show");
+  }
+
+  function closeStudentModal() {
+    document.getElementById("student-modal").classList.remove("show");
+  }
+
+  async function submitStudentForm() {
+    const form = document.getElementById("student-form");
+    const errEl = document.getElementById("form-error");
+    errEl.classList.remove("show");
+
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    const fd = new FormData(form);
+    const payload = Object.fromEntries(fd.entries());
+    payload.fees = { totalFee: payload.totalFee || 0, paidFee: payload.paidFee || 0 };
+    delete payload.totalFee;
+    delete payload.paidFee;
+    if (PENDING_PHOTO !== undefined) payload.photo = PENDING_PHOTO;
+
+    const btn = document.getElementById("save-student-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    try {
+      if (EDITING_ID) {
+        await apiFetch("/students/" + EDITING_ID + "?" + withSession().toString(), { method: "PUT", body: JSON.stringify(payload) });
+        toast("Student details updated.", "success");
+      } else {
+        await apiFetch("/students", { method: "POST", body: JSON.stringify(payload) });
+        toast("New student added successfully.", "success");
+      }
+      closeStudentModal();
+      loadStudents();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add("show");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save Student";
+    }
+  }
+
+  function editStudent(id) {
+    const s = CURRENT_STUDENTS.find((x) => String(x.id) === String(id));
+    if (s) openStudentModal(s);
+  }
+
+  async function deleteStudent(id, name) {
+    if (!confirm(`Remove ${name} from records? This cannot be undone and removes them from every session.`)) return;
+    try {
+      await apiFetch("/students/" + id, { method: "DELETE" });
+      toast("Student removed.", "success");
+      loadStudents();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
+  function viewProfile(id) {
+    const s = CURRENT_STUDENTS.find((x) => String(x.id) === String(id));
+    if (!s) return;
+    const att = s.attendance || { presentDays: 0, totalDays: 0 };
+    document.getElementById("profile-body").innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+        ${avatarHtml(s, 56).replace('class="av"', 'class="av" style="font-size:19px;"')}
+        <div>
+          <h3 style="font-size:19px;">${s.name}</h3>
+          <span class="reg-pill">${s.regNo}</span>
+          <span style="font-size:12.5px;color:var(--slate);margin-left:6px;">Class ${s.class}-${s.section}${s.stream ? " · " + s.stream : ""}</span>
+        </div>
+      </div>
+      <div class="report-meta-grid">
+        <div><span>Roll Number</span><span>${s.rollNo}</span></div>
+        <div><span>Date of Birth</span><span>${formatDate(s.dob)}</span></div>
+        <div><span>Gender</span><span>${s.gender || "-"}</span></div>
+        <div><span>Father's Name</span><span>${s.fatherName}</span></div>
+        <div><span>Mother's Name</span><span>${s.motherName || "-"}</span></div>
+        <div><span>Contact</span><span>${s.contact || "-"}</span></div>
+        <div><span>Alt. Contact</span><span>${s.altContact || "-"}</span></div>
+        <div><span>Email</span><span>${s.email || "-"}</span></div>
+        <div><span>Admission Date</span><span>${formatDate(s.admissionDate)}</span></div>
+      </div>
+      <div class="field-section-title">Address</div>
+      <p style="font-size:13.5px;color:var(--navy-800);">${s.address || "Not provided"}</p>
+      <div class="field-section-title">Attendance & Fees</div>
+      <div class="report-meta-grid">
+        <div><span>Attendance</span><span>${att.totalDays ? att.presentDays + "/" + att.totalDays + " (" + ((att.presentDays / att.totalDays) * 100).toFixed(1) + "%)" : "Not marked yet"}</span></div>
+        <div><span>Fee Status</span><span>${(s.fees && s.fees.totalFee) ? "Rs." + s.fees.paidFee + " / Rs." + s.fees.totalFee : "-"}</span></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+        <a class="btn btn-outline btn-sm" href="marks.html?studentId=${s.id}">Enter Marks</a>
+        <a class="btn btn-outline btn-sm" href="reports.html?studentId=${s.id}">View Report Card</a>
+        <a class="btn btn-outline btn-sm" href="attendance.html?studentId=${s.id}&class=${s.class}&section=${s.section}">View Attendance</a>
+        <button class="btn btn-whatsapp btn-sm" onclick="document.getElementById('profile-modal').classList.remove('show'); openReportModal('${s.id}')">Send WhatsApp Report</button>
+      </div>
+    `;
+    document.getElementById("profile-modal").classList.add("show");
+  }
+
+  /* ============ Send Report (WhatsApp) ============ */
+  let REPORT_STUDENT = null;
+
+  function pctOrDash(n, d) { return d ? ((n / d) * 100).toFixed(1) + "%" : "—"; }
+
+  function selectedExamKeys() {
+    return Array.from(document.querySelectorAll("#rm-exam-select input:checked")).map((el) => el.value);
+  }
+
+  function summarizeSelectedExams(student, keys) {
+    if (!keys.length) return null;
+    const orderedKeys = EXAM_TYPES.map((e) => e.key).filter((k) => keys.includes(k));
+    const maxByKey = {};
+    EXAM_TYPES.forEach((e) => (maxByKey[e.key] = e.max));
+    const label = EXAM_TYPES.filter((e) => keys.includes(e.key)).map((e) => e.label).join(" + ");
+    let obtained = 0, max = 0, any = false;
+    (student.subjects || []).forEach((subj) => {
+      orderedKeys.forEach((key) => {
+        const v = student.marks[subj] ? student.marks[subj][key] : null;
+        if (v !== null && v !== undefined) { obtained += Number(v); max += maxByKey[key]; any = true; }
+      });
+    });
+    if (!any) return null;
+    return { label, obtained, max, pct: max ? (obtained / max) * 100 : null };
+  }
+
+  function buildPreviewText(student, description, keys) {
+    const att = student.attendance || { presentDays: 0, totalDays: 0 };
+    const fees = student.fees || { totalFee: 0, paidFee: 0 };
+    const due = Math.max(0, (fees.totalFee || 0) - (fees.paidFee || 0));
+    const exam = summarizeSelectedExams(student, keys);
+    const lines = [];
+    lines.push(`Progress Report — ${student.name}`);
+    lines.push(`Class ${student.class}-${student.section}${student.stream ? " (" + student.stream + ")" : ""} · Roll ${student.rollNo}`);
+    lines.push("");
+    lines.push(`Attendance: ${att.presentDays}/${att.totalDays} days (${pctOrDash(att.presentDays, att.totalDays)})`);
+    lines.push(`Fees: Paid Rs.${fees.paidFee || 0} of Rs.${fees.totalFee || 0}${due > 0 ? " — Due Rs." + due : " — Fully Paid"}`);
+    lines.push("");
+    if (exam) {
+      lines.push(`Marks (${exam.label}): ${exam.obtained}/${exam.max} (${exam.pct.toFixed(1)}%)`);
+    } else {
+      lines.push("Marks: Not entered yet — pick at least one exam above.");
+    }
+    if (description && description.trim()) {
+      lines.push("");
+      lines.push("Note from school: " + description.trim());
+    }
+    return lines.join("\n");
+  }
+
+  function refreshReportPreview() {
+    if (!REPORT_STUDENT) return;
+    const description = document.getElementById("rm-description").value;
+    document.getElementById("rm-preview").textContent = buildPreviewText(REPORT_STUDENT, description, selectedExamKeys());
+  }
+
+  function openReportModal(id) {
+    const s = CURRENT_STUDENTS.find((x) => String(x.id) === String(id));
+    if (!s) return;
+    REPORT_STUDENT = s;
+    document.getElementById("rm-avatar").textContent = initials(s.name);
+    document.getElementById("rm-name").textContent = s.name;
+    document.getElementById("rm-meta").textContent = `Class ${s.class}-${s.section} · To: ${s.contact || "No number on file"}`;
+    document.getElementById("rm-description").value = "";
+    document.getElementById("rm-status").style.display = "none";
+    document.getElementById("rm-status").className = "report-send-status";
+
+    // Default: pick the most recently-used exam type (final) checked.
+    document.getElementById("rm-exam-select").innerHTML = EXAM_TYPES.map(
+      (e, i) => `<label class="exam-check"><input type="checkbox" value="${e.key}" ${e.key === "final" ? "checked" : ""} onchange="refreshReportPreview()" />${e.label}</label>`
+    ).join("");
+
+    document.getElementById("rm-description").oninput = refreshReportPreview;
+    refreshReportPreview();
+    document.getElementById("report-modal").classList.add("show");
+  }
+
+  function closeReportModal() {
+    document.getElementById("report-modal").classList.remove("show");
+  }
+
+  async function sendReportNow() {
+    if (!REPORT_STUDENT) return;
+    if (!REPORT_STUDENT.contact) {
+      toast("This student has no parent contact number on record.", "error");
+      return;
+    }
+    const featuredExamKeys = selectedExamKeys();
+    if (!featuredExamKeys.length) {
+      toast("Please select at least one exam to feature in the report.", "error");
+      return;
+    }
+    const description = document.getElementById("rm-description").value;
+    const btn = document.getElementById("rm-send-btn");
+    const statusEl = document.getElementById("rm-status");
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+    statusEl.style.display = "none";
+
+    try {
+      const data = await apiFetch(`/reports/${REPORT_STUDENT.id}/send`, {
+        method: "POST",
+        body: JSON.stringify({ description, featuredExamKeys, sessionId: getViewingSessionId() || undefined })
+      });
+      statusEl.className = "report-send-status ok";
+      statusEl.style.display = "flex";
+      statusEl.textContent = data.simulated
+        ? "✓ Report queued (simulate mode — connect WhatsApp credentials in Settings to send live)."
+        : "✓ Report sent on WhatsApp to " + data.to;
+      toast("Report sent to parent.", "success");
+      setTimeout(closeReportModal, 1600);
+    } catch (err) {
+      statusEl.className = "report-send-status err";
+      statusEl.style.display = "flex";
+      statusEl.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20.5 3.5A11 11 0 0 0 3.6 17L2 22l5.2-1.6A11 11 0 1 0 20.5 3.5Zm-8.5 17a9 9 0 0 1-4.6-1.3l-.3-.2-3 .9.9-2.9-.2-.3A9 9 0 1 1 12 20.5Zm5-6.7c-.3-.1-1.6-.8-1.9-.9-.2-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.2.2-.3.2-.5.1a7.3 7.3 0 0 1-2.2-1.3 8 8 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5c.1-.2.2-.3.2-.5.1-.2 0-.4 0-.5-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.5h-.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.3s1 2.7 1.2 2.9c.1.2 2 3.1 4.9 4.3.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.5-.1 1.6-.7 1.9-1.3.2-.6.2-1.1.2-1.3-.1-.1-.3-.2-.6-.3Z"/></svg> Send Report on WhatsApp`;
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

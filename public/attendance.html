@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Attendance — Vidya Setu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/api.js"></script>
+<script src="js/layout.js"></script>
+<script>
+  const content = renderShell({ activeKey: "attendance", eyebrow: "Daily Register", title: "Attendance" });
+  content.innerHTML = `
+    <div class="auth-card tabs" style="max-width:280px;margin-bottom:18px;">
+      <button id="tab-daily" class="active" onclick="switchAttTab('daily')">Mark Daily</button>
+      <button id="tab-monthly" onclick="switchAttTab('monthly')">Monthly View</button>
+    </div>
+
+    <!-- ===== Daily marking ===== -->
+    <div id="panel-daily">
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="field-row" style="align-items:flex-end;">
+          <div class="field">
+            <label>Class</label>
+            <select id="att-class"><option value="">Select class</option></select>
+          </div>
+          <div class="field">
+            <label>Section</label>
+            <select id="att-section">
+              <option value="">All Sections</option>
+              <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Date</label>
+            <input type="date" id="att-date" />
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="markAllDaily('present')">Mark All Present</button>
+          <button class="btn btn-outline btn-sm" onclick="markAllDaily('absent')">Mark All Absent</button>
+        </div>
+      </div>
+      <div id="daily-region"><div class="empty-state"><p>Select a class and date to load the register.</p></div></div>
+    </div>
+
+    <!-- ===== Monthly view ===== -->
+    <div id="panel-monthly" style="display:none;">
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="field-row" style="align-items:flex-end;">
+          <div class="field">
+            <label>Class</label>
+            <select id="mv-class"><option value="">Select class</option></select>
+          </div>
+          <div class="field">
+            <label>Student</label>
+            <select id="mv-student" disabled><option value="">Select class first</option></select>
+          </div>
+          <div class="field">
+            <label>Month</label>
+            <input type="month" id="mv-month" />
+          </div>
+        </div>
+      </div>
+      <div id="monthly-region"><div class="empty-state"><p>Select a class, student and month.</p></div></div>
+    </div>
+  `;
+</script>
+
+<script>
+  function switchAttTab(which) {
+    document.getElementById("tab-daily").classList.toggle("active", which === "daily");
+    document.getElementById("tab-monthly").classList.toggle("active", which === "monthly");
+    document.getElementById("panel-daily").style.display = which === "daily" ? "block" : "none";
+    document.getElementById("panel-monthly").style.display = which === "monthly" ? "block" : "none";
+  }
+
+  let DAILY_STUDENTS = [];
+
+  async function initAttendance() {
+    const meta = await apiFetch("/meta/classes");
+    document.getElementById("att-class").insertAdjacentHTML("beforeend", meta.classes.map((c) => `<option value="${c}">Class ${c}</option>`).join(""));
+    document.getElementById("mv-class").insertAdjacentHTML("beforeend", meta.classes.map((c) => `<option value="${c}">Class ${c}</option>`).join(""));
+
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById("att-date").value = today;
+    document.getElementById("mv-month").value = today.slice(0, 7);
+
+    document.getElementById("att-class").addEventListener("change", loadDailyRegister);
+    document.getElementById("att-section").addEventListener("change", loadDailyRegister);
+    document.getElementById("att-date").addEventListener("change", loadDailyRegister);
+
+    document.getElementById("mv-class").addEventListener("change", loadMonthlyStudentList);
+    document.getElementById("mv-student").addEventListener("change", loadMonthlyView);
+    document.getElementById("mv-month").addEventListener("change", loadMonthlyView);
+
+    // deep link support: attendance.html?studentId=xxx&class=5&section=A
+    const params = new URLSearchParams(window.location.search);
+    const cls = params.get("class");
+    if (cls) {
+      document.getElementById("att-class").value = cls;
+      if (params.get("section")) document.getElementById("att-section").value = params.get("section");
+      loadDailyRegister();
+    }
+  }
+
+  async function loadDailyRegister() {
+    const cls = document.getElementById("att-class").value;
+    const section = document.getElementById("att-section").value;
+    const date = document.getElementById("att-date").value;
+    const region = document.getElementById("daily-region");
+    if (!cls || !date) {
+      region.innerHTML = `<div class="empty-state"><p>Select a class and date to load the register.</p></div>`;
+      return;
+    }
+    region.innerHTML = `<div class="center-loader"><div class="loader"></div></div>`;
+
+    try {
+      const params = withSession({ class: cls, date });
+      if (section) params.set("section", section);
+      const data = await apiFetch("/attendance/daily?" + params.toString());
+      DAILY_STUDENTS = data.students;
+      renderDailyRegister();
+    } catch (err) {
+      region.innerHTML = `<div class="empty-state"><h3>Could not load register</h3><p>${err.message}</p></div>`;
+    }
+  }
+
+  function renderDailyRegister() {
+    const region = document.getElementById("daily-region");
+    if (!DAILY_STUDENTS.length) {
+      region.innerHTML = `<div class="empty-state"><p>No students found in this class/section.</p></div>`;
+      return;
+    }
+    const rows = DAILY_STUDENTS.map(
+      (s) => `
+      <div class="att-row" data-id="${s.id}">
+        <div class="att-row-info">
+          <div class="avatar" style="width:32px;height:32px;border-radius:50%;background:var(--navy-100);color:var(--navy-700);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;flex-shrink:0;${s.photoUrl ? `background-image:url('${s.photoUrl}');background-size:cover;` : ""}">${s.photoUrl ? "" : initials(s.name)}</div>
+          <div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--navy-900);">${s.name}</div>
+            <div style="font-size:11.5px;color:var(--slate);">Roll ${s.rollNo} · ${s.regNo}</div>
+          </div>
+        </div>
+        <div class="att-status-group">
+          <button class="att-status-btn present ${s.status === "present" ? "active" : ""}" onclick="setDailyStatus('${s.id}','present')">Present</button>
+          <button class="att-status-btn absent ${s.status === "absent" ? "active" : ""}" onclick="setDailyStatus('${s.id}','absent')">Absent</button>
+          <button class="att-status-btn leave ${s.status === "leave" ? "active" : ""}" onclick="setDailyStatus('${s.id}','leave')">Leave</button>
+        </div>
+      </div>`
+    ).join("");
+
+    region.innerHTML = `
+      <div class="card card-pad">
+        <div class="att-list">${rows}</div>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+          <button class="btn btn-primary" id="save-attendance-btn" onclick="saveDailyAttendance()">Save Attendance</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function setDailyStatus(studentId, status) {
+    const s = DAILY_STUDENTS.find((x) => x.id === studentId);
+    if (s) s.status = status;
+    renderDailyRegister();
+  }
+
+  function markAllDaily(status) {
+    DAILY_STUDENTS.forEach((s) => (s.status = status));
+    renderDailyRegister();
+  }
+
+  async function saveDailyAttendance() {
+    const date = document.getElementById("att-date").value;
+    const records = DAILY_STUDENTS.filter((s) => s.status).map((s) => ({ studentId: s.id, status: s.status }));
+    if (!records.length) { toast("Mark at least one student's status first.", "error"); return; }
+
+    const btn = document.getElementById("save-attendance-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    try {
+      await apiFetch("/attendance/mark", {
+        method: "POST",
+        body: JSON.stringify({ date, records, sessionId: getViewingSessionId() || undefined })
+      });
+      toast("Attendance saved for " + formatDate(date) + ".", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save Attendance";
+    }
+  }
+
+  /* ===== Monthly view ===== */
+  let MV_STUDENTS = [];
+
+  async function loadMonthlyStudentList() {
+    const cls = document.getElementById("mv-class").value;
+    const studentSel = document.getElementById("mv-student");
+    if (!cls) {
+      studentSel.disabled = true;
+      studentSel.innerHTML = `<option value="">Select class first</option>`;
+      return;
+    }
+    const params = withSession({ class: cls });
+    const data = await apiFetch("/students?" + params.toString());
+    MV_STUDENTS = data.students;
+    studentSel.disabled = false;
+    studentSel.innerHTML = `<option value="">Select student</option>` + data.students.map((s) => `<option value="${s.id}">${s.name} (Roll ${s.rollNo})</option>`).join("");
+
+    const preId = new URLSearchParams(window.location.search).get("studentId");
+    if (preId && data.students.some((s) => s.id === preId)) {
+      studentSel.value = preId;
+      loadMonthlyView();
+    }
+  }
+
+  async function loadMonthlyView() {
+    const studentId = document.getElementById("mv-student").value;
+    const month = document.getElementById("mv-month").value;
+    const region = document.getElementById("monthly-region");
+    if (!studentId || !month) {
+      region.innerHTML = `<div class="empty-state"><p>Select a class, student and month.</p></div>`;
+      return;
+    }
+    region.innerHTML = `<div class="center-loader"><div class="loader"></div></div>`;
+
+    try {
+      const params = withSession({ studentId, month });
+      const data = await apiFetch("/attendance/monthly?" + params.toString());
+      renderMonthlyView(data, month);
+    } catch (err) {
+      region.innerHTML = `<div class="empty-state"><h3>Could not load attendance</h3><p>${err.message}</p></div>`;
+    }
+  }
+
+  function renderMonthlyView(data, month) {
+    const region = document.getElementById("monthly-region");
+    const [y, m] = month.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const firstWeekday = new Date(y, m - 1, 1).getDay();
+    const byDate = {};
+    (data.records || []).forEach((r) => (byDate[r.date] = r.status));
+
+    const cells = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(`<div class="cal-cell empty"></div>`);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${month}-${String(d).padStart(2, "0")}`;
+      const status = byDate[dateStr];
+      const cls = status ? status : "unmarked";
+      cells.push(`<div class="cal-cell ${cls}"><span>${d}</span></div>`);
+    }
+
+    const summary = data.sessionSummary || { presentDays: 0, totalDays: 0 };
+    const pct = summary.totalDays ? ((summary.presentDays / summary.totalDays) * 100).toFixed(1) + "%" : "—";
+
+    region.innerHTML = `
+      <div class="card card-pad">
+        <div class="section-head">
+          <div><h2 style="font-size:15px;">${new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</h2></div>
+          <div style="display:flex;gap:16px;font-size:12.5px;color:var(--slate);">
+            <span><span class="cal-dot present"></span> Present</span>
+            <span><span class="cal-dot absent"></span> Absent</span>
+            <span><span class="cal-dot leave"></span> Leave</span>
+          </div>
+        </div>
+        <div class="cal-grid">${cells.join("")}</div>
+        <div class="snapshot-grid" style="margin-top:18px;">
+          <div class="snapshot-item"><div class="snapshot-value">${summary.presentDays}</div><div class="snapshot-label">Present (this session)</div></div>
+          <div class="snapshot-item"><div class="snapshot-value">${summary.totalDays}</div><div class="snapshot-label">Working days marked</div></div>
+          <div class="snapshot-item"><div class="snapshot-value">${pct}</div><div class="snapshot-label">Attendance %</div></div>
+        </div>
+      </div>
+    `;
+  }
+
+  initAttendance();
+</script>
+</body>
+</html>

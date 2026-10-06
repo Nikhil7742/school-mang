@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vidya Setu — School Management System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="auth-shell">
+  <div class="auth-visual">
+    <div class="brand-mark">
+      <div class="glyph">VS</div>
+      <div class="name">Vidya Setu<small>School Management System</small></div>
+    </div>
+
+    <div class="headline">
+      <div class="eyebrow">Cloud-ready · Class 1 to 12 · Multi-School</div>
+      <h1>Every student's record, one connected bridge.</h1>
+      <p>Manage admissions, attendance, unit tests, half-yearly & final results across every class and stream — one secure, isolated workspace per school.</p>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat"><b>12</b><span>Classes covered</span></div>
+      <div class="stat"><b>3</b><span>Streams · XI–XII</span></div>
+      <div class="stat"><b>5</b><span>Exams tracked</span></div>
+    </div>
+  </div>
+
+  <div class="auth-form-side">
+    <div class="auth-card">
+      <div class="mobile-brand">
+        <div class="glyph">VS</div>
+        <div class="name">Vidya Setu</div>
+      </div>
+
+      <div class="tabs">
+        <button id="tab-admin" class="active" onclick="switchTab('admin')">Sign In</button>
+        <button id="tab-register" onclick="switchTab('register')">Register School</button>
+      </div>
+
+      <!-- Admin login -->
+      <div id="panel-admin">
+        <h2>Welcome back</h2>
+        <p class="sub">Sign in to manage students, marks and reports.</p>
+
+        <div class="alert alert-error" id="admin-error"></div>
+
+        <form id="admin-login-form">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" name="username" placeholder="your username" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="admin-login-btn">Sign In</button>
+        </form>
+
+        <p class="foot-note">New school? Use the <b>Register School</b> tab to create your own login.</p>
+      </div>
+
+      <!-- New school registration -->
+      <div id="panel-register" style="display:none;">
+        <h2>Set up your school</h2>
+        <p class="sub">Your data stays completely separate from every other school on Vidya Setu.</p>
+
+        <div class="alert alert-error" id="register-error"></div>
+
+        <form id="register-form">
+          <div class="field">
+            <label>School Name</label>
+            <input type="text" name="schoolName" placeholder="e.g. Sunrise Public School" required />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Your Name</label>
+              <input type="text" name="adminName" placeholder="Administrator name" required />
+            </div>
+            <div class="field">
+              <label>Phone</label>
+              <input type="text" name="phone" placeholder="School phone" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Choose Username</label>
+              <input type="text" name="username" placeholder="e.g. sunrise_admin" required />
+            </div>
+            <div class="field">
+              <label>Choose Password</label>
+              <input type="password" name="password" placeholder="At least 6 characters" required minlength="6" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Address</label>
+            <input type="text" name="address" placeholder="School address" />
+          </div>
+          <button type="submit" class="btn btn-brass btn-block" id="register-btn">Create School Account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  // if already logged in as admin, go straight to dashboard
+  if (getToken()) window.location.href = "dashboard.html";
+
+  function switchTab(which) {
+    document.getElementById("tab-admin").classList.toggle("active", which === "admin");
+    document.getElementById("tab-register").classList.toggle("active", which === "register");
+    document.getElementById("panel-admin").style.display = which === "admin" ? "block" : "none";
+    document.getElementById("panel-register").style.display = which === "register" ? "block" : "none";
+  }
+
+  document.getElementById("admin-login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById("admin-error");
+    errEl.classList.remove("show");
+    const btn = document.getElementById("admin-login-btn");
+    const fd = new FormData(e.target);
+    btn.disabled = true;
+    btn.textContent = "Signing in...";
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: fd.get("username"), password: fd.get("password") })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Login failed");
+      setSession(data.token, data.user);
+      window.location.href = "dashboard.html";
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add("show");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Sign In";
+    }
+  });
+
+  document.getElementById("register-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById("register-error");
+    errEl.classList.remove("show");
+    const btn = document.getElementById("register-btn");
+    const fd = new FormData(e.target);
+    btn.disabled = true;
+    btn.textContent = "Creating...";
+    try {
+      const res = await fetch("/api/auth/register-school", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(fd.entries()))
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not create your school account");
+      setSession(data.token, data.user);
+      toast("School account created. Welcome!", "success");
+      window.location.href = "dashboard.html";
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add("show");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Create School Account";
+    }
+  });
+</script>
+</body>
+</html>

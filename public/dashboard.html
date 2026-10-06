@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Vidya Setu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/api.js"></script>
+<script src="js/layout.js"></script>
+<script>
+  const content = renderShell({ activeKey: "dashboard", eyebrow: "Overview", title: "Dashboard" });
+  content.innerHTML = `<div class="center-loader"><div class="loader"></div></div>`;
+</script>
+
+<script>
+  function renderGenderDonut(genderSplit) {
+    const total = (genderSplit.male || 0) + (genderSplit.female || 0) + (genderSplit.other || 0);
+    const male = genderSplit.male || 0;
+    const female = genderSplit.female || 0;
+    const other = genderSplit.other || 0;
+    const r = 54, circumference = 2 * Math.PI * r;
+
+    if (!total) {
+      return `<div class="empty-state" style="padding:20px;"><p>No student data yet.</p></div>`;
+    }
+
+    const maleLen = (male / total) * circumference;
+    const femaleLen = (female / total) * circumference;
+    const otherLen = (other / total) * circumference;
+
+    const femaleOffset = -maleLen;
+    const otherOffset = -(maleLen + femaleLen);
+
+    return `
+      <div class="donut-wrap">
+        <svg width="150" height="150" viewBox="0 0 150 150">
+          <circle cx="75" cy="75" r="${r}" fill="none" stroke="var(--navy-100)" stroke-width="18"/>
+          <circle cx="75" cy="75" r="${r}" fill="none" stroke="var(--navy-700)" stroke-width="18"
+            stroke-dasharray="${maleLen} ${circumference - maleLen}" stroke-dashoffset="0"
+            transform="rotate(-90 75 75)" stroke-linecap="round"/>
+          <circle cx="75" cy="75" r="${r}" fill="none" stroke="var(--rose)" stroke-width="18"
+            stroke-dasharray="${femaleLen} ${circumference - femaleLen}" stroke-dashoffset="${femaleOffset}"
+            transform="rotate(-90 75 75)" stroke-linecap="round"/>
+          ${other ? `<circle cx="75" cy="75" r="${r}" fill="none" stroke="var(--brass)" stroke-width="18"
+            stroke-dasharray="${otherLen} ${circumference - otherLen}" stroke-dashoffset="${otherOffset}"
+            transform="rotate(-90 75 75)" stroke-linecap="round"/>` : ""}
+          <text x="75" y="71" text-anchor="middle" font-family="Fraunces, serif" font-size="26" fill="var(--navy-900)" font-weight="600">${total}</text>
+          <text x="75" y="90" text-anchor="middle" font-family="Manrope, sans-serif" font-size="11" fill="var(--slate)">students</text>
+        </svg>
+        <div class="donut-legend">
+          <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--navy-700);"></span>Boys — ${male}</div>
+          <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--rose);"></span>Girls — ${female}</div>
+          ${other ? `<div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--brass);"></span>Other — ${other}</div>` : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  // ---- Professional SVG bar chart for class-wise strength (replaces the old plain div bars) ----
+  function renderClassStrengthChart(classWise, sessionLabel) {
+    const entries = Object.entries(classWise);
+    const maxCount = Math.max(1, ...entries.map(([, c]) => c));
+    const width = 640, height = 260;
+    const padL = 34, padR = 12, padT = 14, padB = 30;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+    const n = entries.length;
+    const gap = 8;
+    const barW = Math.max(10, (plotW - gap * (n - 1)) / n);
+
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+      const y = padT + plotH * (1 - f);
+      const val = Math.round(maxCount * f);
+      return `
+        <line x1="${padL}" y1="${y}" x2="${width - padR}" y2="${y}" stroke="var(--line)" stroke-width="1" stroke-dasharray="${f === 0 ? "0" : "3,4"}"/>
+        <text x="${padL - 8}" y="${y + 3}" text-anchor="end" font-size="9.5" fill="var(--slate-light)" font-family="var(--font-mono)">${val}</text>`;
+    }).join("");
+
+    const bars = entries
+      .map(([cls, count], i) => {
+        const x = padL + i * (barW + gap);
+        const h = maxCount ? (count / maxCount) * plotH : 0;
+        const y = padT + plotH - h;
+        return `
+          <g class="bar-group">
+            <rect class="chart-bar" x="${x}" y="${padT + plotH}" width="${barW}" height="0" rx="4" data-target-y="${y}" data-target-h="${h}"></rect>
+            <text x="${x + barW / 2}" y="${padT + plotH - h - 8}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--navy-800)" class="chart-bar-label" style="opacity:0;">${count}</text>
+            <text x="${x + barW / 2}" y="${height - 8}" text-anchor="middle" font-size="10" fill="var(--slate)" font-family="var(--font-body)">${cls}</text>
+          </g>`;
+      })
+      .join("");
+
+    return `
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="240" id="class-strength-svg" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--brass-light)"/>
+            <stop offset="100%" stop-color="var(--navy-700)"/>
+          </linearGradient>
+        </defs>
+        ${gridLines}
+        ${bars}
+      </svg>
+      <div class="chart-foot"><span>Academic Session ${sessionLabel}</span></div>
+    `;
+  }
+
+  function animateClassChart() {
+    document.querySelectorAll("#class-strength-svg .chart-bar").forEach((rect, i) => {
+      const y = rect.getAttribute("data-target-y");
+      const h = rect.getAttribute("data-target-h");
+      setTimeout(() => {
+        rect.setAttribute("y", y);
+        rect.setAttribute("height", h);
+      }, 40 * i);
+    });
+    document.querySelectorAll("#class-strength-svg .chart-bar-label").forEach((el, i) => {
+      setTimeout(() => (el.style.opacity = "1"), 40 * i + 300);
+    });
+  }
+
+  function renderReportsSnapshot(snap) {
+    const feePct = snap.feeCollectionPct === null ? "—" : snap.feeCollectionPct + "%";
+    return `
+      <div class="card card-pad" style="margin-top:18px;">
+        <div class="section-head">
+          <div>
+            <h2 style="font-size:16px;">Reports Summary</h2>
+            <div class="sub" style="margin-top:4px;">A quick pulse on communication, fees & attendance</div>
+          </div>
+          <a href="reports.html" class="btn btn-outline btn-sm">Go to Report Cards</a>
+        </div>
+        <div class="snapshot-grid">
+          <div class="snapshot-item">
+            <div class="snapshot-value">${snap.reportsSentThisMonth}</div>
+            <div class="snapshot-label">Reports sent this month</div>
+          </div>
+          <div class="snapshot-item">
+            <div class="snapshot-value">${snap.unreadReplies}</div>
+            <div class="snapshot-label">Unread parent replies</div>
+          </div>
+          <div class="snapshot-item">
+            <div class="snapshot-value">${feePct}</div>
+            <div class="snapshot-label">Fee collected · Due Rs.${snap.feeDue}</div>
+          </div>
+          <div class="snapshot-item">
+            <div class="snapshot-value">${snap.attendanceMarkedToday ? snap.presentToday + "/" + snap.attendanceMarkedToday : "—"}</div>
+            <div class="snapshot-label">Present today <a href="attendance.html" style="color:var(--brass-dark);font-weight:700;">· Mark now</a></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function loadDashboard() {
+    try {
+      const data = await apiFetch("/meta/dashboard?" + withSession().toString());
+      const classBars = renderClassStrengthChart(data.classWise, data.session.label);
+
+      const recentHtml = data.recent.length
+        ? data.recent
+            .map(
+              (s) => `
+            <div class="recent-row">
+              <div class="avatar" style="${s.photoUrl ? `background-image:url('${s.photoUrl}');background-size:cover;background-position:center;` : ""}">${s.photoUrl ? "" : initials(s.name)}</div>
+              <div class="rinfo">
+                <div class="rname">${s.name}</div>
+                <div class="rmeta">Class ${s.class}-${s.section}${s.stream ? " · " + s.stream : ""}</div>
+              </div>
+              <div class="rreg">${s.regNo}</div>
+            </div>`
+            )
+            .join("")
+        : `<div class="empty-state" style="padding:30px;"><p>No students added yet.</p></div>`;
+
+      content.innerHTML = `
+        <div class="stats-grid">
+          <div class="card stat-card">
+            <div class="icon-badge badge-navy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg></div>
+            <div class="value">${data.totalStudents}</div>
+            <div class="label">Total Students</div>
+          </div>
+          <div class="card stat-card">
+            <div class="icon-badge badge-brass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></div>
+            <div class="value">${data.totalClasses}</div>
+            <div class="label">Classes (I – XII)</div>
+          </div>
+          <div class="card stat-card">
+            <div class="icon-badge badge-leaf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+            <div class="value">${data.genderSplit.male}</div>
+            <div class="label">Boys Enrolled</div>
+          </div>
+          <div class="card stat-card">
+            <div class="icon-badge badge-rose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a6 6 0 0 1 12 0v2"/></svg></div>
+            <div class="value">${data.genderSplit.female}</div>
+            <div class="label">Girls Enrolled</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card card-pad">
+            <div class="section-head">
+              <div>
+                <h2>Class-wise Strength</h2>
+                <div class="sub">Number of students enrolled per class</div>
+              </div>
+            </div>
+            <div class="class-bars-chart">${classBars}</div>
+          </div>
+
+          <div class="card card-pad">
+            <div class="section-head">
+              <div>
+                <h2>Gender Split</h2>
+                <div class="sub">Boys vs Girls enrolled</div>
+              </div>
+            </div>
+            ${renderGenderDonut(data.genderSplit)}
+          </div>
+        </div>
+
+        <div class="card card-pad" style="margin-top:18px;">
+          <div class="section-head">
+            <div>
+              <h2>Recently Added</h2>
+              <div class="sub">Latest admissions</div>
+            </div>
+            <a href="students.html" class="btn btn-outline btn-sm">View All</a>
+          </div>
+          <div class="recent-list">${recentHtml}</div>
+        </div>
+
+        ${renderReportsSnapshot(data.reportsSnapshot)}
+      `;
+
+      requestAnimationFrame(() => animateClassChart());
+    } catch (err) {
+      content.innerHTML = `<div class="empty-state"><h3>Could not load dashboard</h3><p>${err.message}</p></div>`;
+    }
+  }
+  loadDashboard();
+</script>
+</body>
+</html>

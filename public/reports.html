@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Report Cards — Vidya Setu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/api.js"></script>
+<script src="js/layout.js"></script>
+<script>
+  const content = renderShell({ activeKey: "reports", eyebrow: "Assessment", title: "Report Cards" });
+  content.innerHTML = `
+    <div class="card card-pad no-print" style="margin-bottom:18px;">
+      <div class="section-head"><div><h2 style="font-size:15px;">Find Student</h2><div class="sub">Choose a class, then a student, to generate their report card</div></div></div>
+      <div class="field-row">
+        <div class="field">
+          <label>Class</label>
+          <select id="rc-class"><option value="">Select class</option></select>
+        </div>
+        <div class="field">
+          <label>Student</label>
+          <select id="rc-student" disabled><option value="">Select class first</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Which exam(s) to feature as the highlighted total</label>
+        <div class="exam-multiselect" id="rc-exam-select"></div>
+        <div class="hint">Select more than one to combine them — e.g. Unit Test 1 + 2 + 3.</div>
+      </div>
+      <button class="btn btn-primary" onclick="generateReport()">Generate Report Card</button>
+    </div>
+
+    <div id="report-region"></div>
+  `;
+</script>
+
+<script>
+  let META_CLASSES = [];
+  let CLASS_STUDENTS = [];
+  let CURRENT = null;
+  let EXAM_TYPES = [];
+
+  async function init() {
+    const meta = await apiFetch("/meta/classes");
+    META_CLASSES = meta.classes;
+    const classSel = document.getElementById("rc-class");
+    meta.classes.forEach((c) => classSel.insertAdjacentHTML("beforeend", `<option value="${c}">Class ${c}</option>`));
+
+    const examMeta = await apiFetch("/meta/exam-types");
+    EXAM_TYPES = examMeta.examTypes;
+    document.getElementById("rc-exam-select").innerHTML = EXAM_TYPES.map(
+      (e) => `<label class="exam-check"><input type="checkbox" value="${e.key}" ${e.key === "final" ? "checked" : ""} />${e.label}</label>`
+    ).join("");
+
+    classSel.addEventListener("change", async (e) => {
+      const cls = e.target.value;
+      const studentSel = document.getElementById("rc-student");
+      if (!cls) {
+        studentSel.disabled = true;
+        studentSel.innerHTML = `<option value="">Select class first</option>`;
+        return;
+      }
+      const params = withSession();
+      params.set("class", cls);
+      const data = await apiFetch("/students?" + params.toString());
+      CLASS_STUDENTS = data.students;
+      studentSel.disabled = false;
+      studentSel.innerHTML =
+        `<option value="">Select student</option>` +
+        data.students.map((s) => `<option value="${s.id}">${s.name} (Roll ${s.rollNo}, ${s.regNo})</option>`).join("");
+    });
+
+    const preselect = new URLSearchParams(window.location.search).get("studentId");
+    if (preselect) {
+      const data = await apiFetch("/students/" + preselect + "?" + withSession().toString());
+      if (data.student) {
+        classSel.value = data.student.class;
+        await classSel.dispatchEvent(new Event("change"));
+        setTimeout(() => {
+          document.getElementById("rc-student").value = data.student.id;
+          generateReport();
+        }, 200);
+      }
+    }
+  }
+
+  function selectedExamKeys() {
+    const keys = Array.from(document.querySelectorAll("#rc-exam-select input:checked")).map((el) => el.value);
+    return EXAM_TYPES.map((e) => e.key).filter((k) => keys.includes(k)); // keep natural order
+  }
+
+  async function generateReport() {
+    const studentId = document.getElementById("rc-student").value;
+    if (!studentId) { toast("Please select a student first.", "error"); return; }
+    const featuredExamKeys = selectedExamKeys();
+    if (!featuredExamKeys.length) { toast("Please select at least one exam to feature.", "error"); return; }
+
+    const [{ student }, { school }] = await Promise.all([
+      apiFetch("/students/" + studentId + "?" + withSession().toString()),
+      apiFetch("/meta/school?" + withSession().toString())
+    ]);
+    CURRENT = student;
+    renderReport(student, school, featuredExamKeys);
+  }
+
+  const EXAM_MAX = { ut1: 25, ut2: 25, ut3: 25, halfYearly: 100, final: 100 };
+
+  function gradeFor(pct) {
+    if (pct === null) return { g: "-", cls: "" };
+    if (pct >= 90) return { g: "A+", cls: "grade-A" };
+    if (pct >= 75) return { g: "A", cls: "grade-A" };
+    if (pct >= 60) return { g: "B", cls: "grade-B" };
+    if (pct >= 45) return { g: "C", cls: "grade-C" };
+    return { g: "D", cls: "grade-C" };
+  }
+
+  function renderReport(s, school, featuredExamKeys) {
+    const region = document.getElementById("report-region");
+    const subjects = s.subjects || [];
+    const examKeys = ["ut1", "ut2", "ut3", "halfYearly", "final"];
+
+    const rows = subjects
+      .map((subj) => {
+        const m = s.marks[subj] || {};
+        const cells = examKeys.map((k) => `<td>${m[k] !== null && m[k] !== undefined ? m[k] : "—"}</td>`).join("");
+        return `<tr><td style="text-align:left;font-weight:600;">${subj}</td>${cells}</tr>`;
+      })
+      .join("");
+
+    let obtained = 0, max = 0;
+    subjects.forEach((subj) => {
+      featuredExamKeys.forEach((key) => {
+        const v = s.marks[subj] ? s.marks[subj][key] : null;
+        if (v !== null && v !== undefined) {
+          obtained += Number(v);
+          max += EXAM_MAX[key];
+        }
+      });
+    });
+    const pct = max > 0 ? (obtained / max) * 100 : null;
+    const grade = gradeFor(pct);
+    const featuredLabel = EXAM_TYPES.filter((e) => featuredExamKeys.includes(e.key)).map((e) => e.label).join(" + ");
+    const att = s.attendance || { presentDays: 0, totalDays: 0 };
+
+    region.innerHTML = `
+      <div class="report-page">
+        <div class="card-pad no-print" style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:12px;">
+          <button class="btn btn-outline" onclick="window.print()">🖨 Print / Save as PDF</button>
+        </div>
+        <div class="report-card">
+          <div class="report-letterhead">
+            <div class="glyph">VS</div>
+            <div>
+              <h2>${school.name}</h2>
+              <p>${school.address}</p>
+              <p>${school.phone} · ${school.email}</p>
+            </div>
+          </div>
+          <div class="report-title-bar">
+            <span class="badge-brass">Academic Session ${school.session} · Progress Report</span>
+          </div>
+          <div class="report-meta-grid">
+            <div><span>Student Name</span><span>${s.name}</span></div>
+            <div><span>Registration No.</span><span class="mono">${s.regNo}</span></div>
+            <div><span>Class / Section</span><span>${s.class}-${s.section}${s.stream ? " (" + s.stream + ")" : ""}</span></div>
+            <div><span>Roll Number</span><span>${s.rollNo}</span></div>
+            <div><span>Father's Name</span><span>${s.fatherName}</span></div>
+            <div><span>Date of Birth</span><span>${formatDate(s.dob)}</span></div>
+            <div><span>Attendance</span><span>${att.totalDays ? att.presentDays + "/" + att.totalDays + " days" : "-"}</span></div>
+          </div>
+
+          <table>
+            <thead><tr><th style="text-align:left;">Subject</th><th>UT-1 <span class="maxlbl">/25</span></th><th>UT-2 <span class="maxlbl">/25</span></th><th>UT-3 <span class="maxlbl">/25</span></th><th>Half Yearly <span class="maxlbl">/100</span></th><th>Final <span class="maxlbl">/100</span></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+
+          <div class="report-summary">
+            <div class="sitem"><b>${max ? obtained : "—"}${max ? " / " + max : ""}</b><span>Marks Obtained (${featuredLabel})</span></div>
+            <div class="sitem"><b>${pct !== null ? pct.toFixed(1) + "%" : "—"}</b><span>Percentage</span></div>
+            <div class="sitem"><b class="${grade.cls}">${grade.g}</b><span>Overall Grade</span></div>
+          </div>
+
+          <div class="sign-row no-print-hide">
+            <div class="sig"><div class="line"></div>Class Teacher</div>
+            <div class="sig"><div class="line"></div>Examination In-Charge</div>
+            <div class="sig"><div class="line"></div>Principal</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  init();
+</script>
+</body>
+</html>
